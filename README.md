@@ -55,6 +55,7 @@ An [Ansible AWX](https://github.com/ansible/awx) operator for Kubernetes built w
             * [Cluster-scope to Namespace-scope considerations](#cluster-scope-to-namespace-scope-considerations)
             * [Project is now based on v1.x of the operator-sdk project](#project-is-now-based-on-v1x-of-the-operator-sdk-project)
             * [Steps to upgrade](#steps-to-upgrade)
+      * [Disable IPV6](#disable-ipv6)
       * [Add Execution Nodes](#adding-execution-nodes)
           * [Custom Receptor CA](#custom-receptor-ca)
    * [Contributing](#contributing)
@@ -203,6 +204,20 @@ spec:
 
 > It may make sense to create and specify your own secret key for your deployment so that if the k8s secret gets deleted, it can be re-created if needed.  If it is not provided, one will be auto-generated, but cannot be recovered if lost. Read more [here](#secret-key-configuration).
 
+If you are on Openshift, you can take advantage of Routes by specifying the following your spec. This will automatically create a Route for you with a custom hostname. This can be found on the Route section of the Openshift Console.
+
+```yaml
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx-demo
+spec:
+  service_type: clusterip
+  ingress_type: Route
+```
+
+
 Make sure to add this new file to the list of "resources" in your `kustomization.yaml` file:
 
 ```yaml
@@ -243,13 +258,13 @@ awx-demo-service    NodePort    10.109.40.38   <none>        80:31006/TCP   3m56
 Once deployed, the AWX instance will be accessible by running:
 
 ```
-$ minikube service awx-demo-service --url
+$ minikube service -n awx awx-demo-service --url
 ```
 
 By default, the admin user is `admin` and the password is available in the `<resourcename>-admin-password` secret. To retrieve the admin password, run:
 
 ```
-$ kubectl get secret awx-demo-admin-password -o jsonpath="{.data.password}" | base64 --decode
+$ kubectl get secret awx-demo-admin-password -o jsonpath="{.data.password}" | base64 --decode ; echo
 yDL2Cx5Za94g9MvBP6B73nzVLlmfgPjR
 ```
 
@@ -303,7 +318,7 @@ There are three variables that are customizable for the admin user account creat
 
 If `admin_password_secret` is not provided, the operator will look for a secret named `<resourcename>-admin-password` for the admin password. If it is not present, the operator will generate a password and create a Secret from it named `<resourcename>-admin-password`.
 
-To retrieve the admin password, run `kubectl get secret <resourcename>-admin-password -o jsonpath="{.data.password}" | base64 --decode`
+To retrieve the admin password, run `kubectl get secret <resourcename>-admin-password -o jsonpath="{.data.password}" | base64 --decode ; echo`
 
 The secret that is expected to be passed should be formatted as follow:
 
@@ -448,6 +463,7 @@ The following variables are customizable when `ingress_type=ingress`. The `ingre
 | hostname            | Define the FQDN                          | {{ meta.name }}.example.com |
 | ingress_path        | Define the ingress path to the service   | /                           |
 | ingress_path_type   | Define the type of the path (for LBs)    | Prefix                      |
+| ingress_api_version | Define the Ingress resource apiVersion   | 'networking.k8s.io/v1'      |
 
 ```yaml
 ---
@@ -468,6 +484,7 @@ The following variables are customizable when `ingress_type=route`
 | route_host                      | Common name the route answers for             | `<instance-name>-<namespace>-<routerCanonicalHostname>` |
 | route_tls_termination_mechanism | TLS Termination mechanism (Edge, Passthrough) | Edge                                                    |
 | route_tls_secret                | Secret that contains the TLS information      | Empty string                                            |
+| route_api_version               | Define the Route resource apiVersion          | 'route.openshift.io/v1'                                 |
 
 ```yaml
 ---
@@ -704,18 +721,20 @@ You can constrain the AWX pods created by the operator to run on a certain subse
 the AWX pods to run only on the nodes that match all the specified key/value pairs. `tolerations` and `postgres_tolerations` allow the AWX
 pods to be scheduled onto nodes with matching taints.
 The ability to specify topologySpreadConstraints is also allowed through `topology_spread_constraints`
+If you want to use affinity rules for your AWX pod you can use the `affinity` option.
 
 
-| Name                        | Description                         | Default |
-| --------------------------- | ----------------------------------- | ------- |
-| postgres_image              | Path of the image to pull           | postgres      |
-| postgres_image_version      | Image version to pull               | 13      |
-| node_selector               | AWX pods' nodeSelector              | ''      |
-| topology_spread_constraints | AWX pods' topologySpreadConstraints | ''      |
-| tolerations                 | AWX pods' tolerations               | ''      |
-| annotations                 | AWX pods' annotations               | ''      |
-| postgres_selector           | Postgres pods' nodeSelector         | ''      |
-| postgres_tolerations        | Postgres pods' tolerations          | ''      |
+| Name                        | Description                         | Default  |
+| --------------------------- | ----------------------------------- | -------  |
+| postgres_image              | Path of the image to pull           | postgres |
+| postgres_image_version      | Image version to pull               | 13       |
+| node_selector               | AWX pods' nodeSelector              | ''       |
+| topology_spread_constraints | AWX pods' topologySpreadConstraints | ''       |
+| affinity                    | AWX pods' affinity rules            | ''       |
+| tolerations                 | AWX pods' tolerations               | ''       |
+| annotations                 | AWX pods' annotations               | ''       |
+| postgres_selector           | Postgres pods' nodeSelector         | ''       |
+| postgres_tolerations        | Postgres pods' tolerations          | ''       |
 
 Example of customization could be:
 
@@ -748,6 +767,46 @@ spec:
       operator: "Equal"
       value: "AWX"
       effect: "NoSchedule"
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: another-node-label-key
+            operator: In
+            values:
+            - another-node-label-value
+            - another-node-label-value
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: security
+              operator: In
+              values:
+              - S2
+          topologyKey: topology.kubernetes.io/zone
+```
+
+#### Adding custom labels to AWX pods
+
+You can add custom labels to the AWX pods.
+
+| Name                           | Description                 | Default |
+| -------------------------------| --------------------------- | ------- |
+| pod_labels                     | Add custom labels           | ''      |
+
+Example of customization could be:
+
+```yaml
+---
+spec:
+  ...
+  pod_labels: |
+    prometheus.io/scrape-awx: 'true'
 ```
 
 #### Trusting a Custom Certificate Authority
@@ -775,7 +834,22 @@ spec:
   bundle_cacert_secret: <resourcename>-custom-certs
 ```
 
-To create the secrets, you can use the commands below:
+Create the secret with `kustomization.yaml` file:
+
+```yaml
+....
+
+secretGenerator:
+  - name: <resourcename>-custom-certs
+    files:
+      - bundle-ca.crt=<path+filename>
+    options:
+      disableNameSuffixHash: true
+      
+...
+```
+
+Create the secret with CLI:
 
 * Certificate Authority secret
 
@@ -957,6 +1031,17 @@ Example spec file for volumes and volume mounts
 
 > :warning: **Volume and VolumeMount names cannot contain underscores(_)**
 
+##### Custom Nginx Configuration
+
+Using the [extra_volumes feature](#custom-volume-and-volume-mount-options), it is possible to extend the nginx.conf.
+
+1. Create a ConfigMap with the extra settings you want to include in the nginx.conf
+2. Create an extra_volumes entry in the AWX spec for this ConfigMap
+3. Create an web_extra_volume_mounts entry in the AWX spec to mount this volume
+
+The AWX nginx config automatically includes /etc/nginx/conf.d/*.conf if present.
+
+
 #### Default execution environments from private registries
 
 In order to register default execution environments from private registries, the Custom Resource needs to know about the pull credentials. Those credentials should be stored as a secret and either specified as `ee_pull_credentials_secret` at the CR spec level, or simply be present on the namespace under the name `<resourcename>-ee-pull-credentials` . Instance initialization will register a `Container registry` type credential on the deployed instance and assign it to the registered default execution environments.
@@ -1076,7 +1161,13 @@ Example configuration of `extra_settings` parameter
 
       - setting: AUTH_LDAP_BIND_DN
         value: "cn=admin,dc=example,dc=com"
+
+      - setting: LOG_AGGREGATOR_LEVEL
+        value: "'DEBUG'"
 ```
+
+Note for some settings, such as `LOG_AGGREGATOR_LEVEL`, the value may need double quotes.
+
 
 #### No Log
 Configure no_log for tasks with no_log
@@ -1167,7 +1258,14 @@ Apply the awx-operator.yml for that release to upgrade the operator, and in turn
 
 #### Backup
 
-The first part of any upgrade should be a backup. Note, there are secrets in the pod which work in conjunction with the database. Having just a database backup without the required secrets will not be sufficient for recovering from an issue when upgrading to a new version. See the [backup role documentation](https://github.com/ansible/awx-operator/tree/devel/roles/backup) for information on how to backup your database and secrets. In the event you need to recover the backup see the [restore role documentation](https://github.com/ansible/awx-operator/tree/devel/roles/restore).
+The first part of any upgrade should be a backup. Note, there are secrets in the pod which work in conjunction with the database. Having just a database backup without the required secrets will not be sufficient for recovering from an issue when upgrading to a new version. See the [backup role documentation](https://github.com/ansible/awx-operator/tree/devel/roles/backup) for information on how to backup your database and secrets.
+
+In the event you need to recover the backup see the [restore role documentation](https://github.com/ansible/awx-operator/tree/devel/roles/restore). *Before Restoring from a backup*, be sure to:
+* delete the old existing AWX CR
+* delete the persistent volume claim (PVC) for the database from the old deployment, which has a name like `postgres-13-<deployment-name>-postgres-13-0`
+
+**Note**: Do not delete the namespace/project, as that will delete the backup and the backup's PVC as well.
+
 
 #### PostgreSQL Upgrade Considerations
 
@@ -1207,6 +1305,25 @@ $ kubectl -n default delete clusterrole awx-operator
 Then install the new AWX Operator by following the instructions in [Basic Install](#basic-install-on-existing-cluster). The `NAMESPACE` environment variable have to be the name of the namespace in which your old AWX instance resides.
 
 Once the new AWX Operator is up and running, your AWX deployment will also be upgraded.
+
+### Disable IPV6
+Starting with AWX Operator release 0.24.0,[IPV6 was enabled in ngnix configuration](https://github.com/ansible/awx-operator/pull/950) which causes
+upgrades and installs to fail in environments where IPv6 is not allowed. Starting in 1.1.1 release, you can set the `ipv6_disabled` flag on the AWX
+spec. If you need to use an AWX operator version between 0.24.0 and 1.1.1 in an IPv6 disabled environment, it is suggested to enabled ipv6 on worker
+nodes.
+
+In order to disable ipv6 on ngnix configuration (awx-web container), add following to the AWX spec.
+
+The following variables are customizable 
+
+| Name          | Description            | Default |
+| ------------- | ---------------------- | ------- |
+| ipv6_disabled | Flag to disable ipv6   | false   |
+
+```yaml
+spec:
+  ipv6_disabled: true
+```
 
 ### Adding Execution Nodes
 Starting with AWX Operator v0.30.0 and AWX v21.7.0, standalone execution nodes can be added to your deployments.

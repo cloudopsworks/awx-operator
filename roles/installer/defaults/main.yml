@@ -81,6 +81,13 @@ node_selector: ''
 #         app.kubernetes.io/name: "<resourcename>"
 topology_spread_constraints: ''
 
+affinity: {}
+
+# Custom labels for the AWX pods. Specify as literal block. E.g.:
+# pod_labels: |
+#   prometheus.io/scrape: 'true'
+pod_labels: ''
+
 # Add node tolerations for the AWX pods. Specify as literal block. E.g.:
 # tolerations: |
 #   - key: "dedicated"
@@ -303,3 +310,6 @@ auto_upgrade: true
 
 # Maintain some of the recommended `app.kubernetes.io/*` labels on the resource (self)
 set_self_labels: true
+
+# Disable web container's nginx ipv6 listener
+ipv6_disabled: false

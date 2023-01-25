@@ -607,6 +607,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Affinity
+        path: affinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
       - displayName: Control Plane Priority Class
         path: control_plane_priority_class
         x-descriptors:
@@ -702,6 +707,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - displayName: Disable IPv6 listener?
+        path: ipv6_disabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       statusDescriptors:
       - description: Route to access the instance deployed
         displayName: URL
@@ -777,6 +787,7 @@ spec:
   - email: awx-project@googlegroups.com
     name: AWX Team
   maturity: alpha
+  MinKubeVersion: 1.22.15
   provider:
     name: Ansible
     url: github.com/ansible/awx-operator
